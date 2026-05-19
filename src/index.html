@@ -51,6 +51,33 @@
     </div>
   </header>
 
+  <!-- ── How it works banner ───────────────────────────────────── -->
+  <div class="how-bar" id="howBar">
+    <div class="how-bar-inner">
+      <button class="how-toggle" id="howToggle">ℹ How this demo works ▾</button>
+      <div class="how-content hidden" id="howContent">
+        <div class="how-grid">
+          <div class="how-card">
+            <div class="how-card-title">📚 What are "sources"?</div>
+            <p>Each source is a <strong>mock corpus</strong> — a realistic text summary of a real-world codebase or technical document (e.g. an audio processing library's API signatures, or an FFmpeg encoding manual). <strong>No real audio files, videos, or APIs are used.</strong> The demo simulates what an LLM would receive as input when generating a skill.</p>
+          </div>
+          <div class="how-card">
+            <div class="how-card-title">⚗ What is a "skill"?</div>
+            <p>A <strong>SKILL.md artifact</strong> is a reusable procedural package (from Claude Code's Agent Skills interface) that encodes <em>how to accomplish a class of tasks</em>. It can be stored, versioned, and reused across agents. The demo shows how different generation methods produce different quality skills from the same source material.</p>
+          </div>
+          <div class="how-card">
+            <div class="how-card-title">🔬 What does the pipeline do?</div>
+            <p><strong>Stage 1–2:</strong> Construct a knowledge graph from the source. <strong>Stage 3:</strong> The selected generation method (e.g. SkillSeekers) distills the source into a SKILL.md. <strong>Stage 4:</strong> Static rule-based checks score 6 quality axes. <strong>Stage 5:</strong> The skill is executed against test cases — pass@3 measures if any of 3 trials succeed.</p>
+          </div>
+          <div class="how-card">
+            <div class="how-card-title">📊 What do the numbers mean?</div>
+            <p><strong>pass@3</strong> comes from the paper's benchmark across 187 real tasks — it's the aggregate rate, not computed live. <strong>Static scores</strong> (0–100) measure structural quality of the SKILL.md. The key finding: <em>static quality ≠ execution success</em>. SkillNet scores highest statically but SkillSeekers wins on pass@3.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Dashboard ─────────────────────────────────────────────── -->
   <main class="dashboard">
 

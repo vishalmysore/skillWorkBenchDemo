@@ -26,6 +26,63 @@ body {
   flex-direction: column;
 }
 
+/* ── How it works bar ─────────────────────────────────────────── */
+.how-bar {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.how-bar-inner {
+  padding: 0 16px;
+}
+
+.how-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 6px 0;
+  cursor: pointer;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+.how-toggle:hover { color: var(--accent); }
+
+.how-content {
+  padding-bottom: 12px;
+}
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.how-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 10px 12px;
+}
+
+.how-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 5px;
+}
+
+.how-card p {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.how-card strong { color: var(--text); }
+.how-card em     { color: var(--accent); font-style: normal; }
+
 /* ── Config banner ────────────────────────────────────────────── */
 .config-banner {
   background: var(--bg2);

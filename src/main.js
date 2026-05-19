@@ -382,6 +382,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sourceSelect').addEventListener('change', updateSourceInfo)
   document.getElementById('methodSelect').addEventListener('change', updateMethodInfo)
 
+  // How it works toggle
+  document.getElementById('howToggle').addEventListener('click', () => {
+    const content = document.getElementById('howContent')
+    const btn     = document.getElementById('howToggle')
+    const open    = !content.classList.contains('hidden')
+    content.classList.toggle('hidden', open)
+    btn.textContent = open ? 'ℹ How this demo works ▾' : 'ℹ How this demo works ▴'
+  })
+
   // Execute
   document.getElementById('executeBtn').addEventListener('click', executePipeline)
   document.getElementById('testBtn').addEventListener('click', handleTestConnection)
