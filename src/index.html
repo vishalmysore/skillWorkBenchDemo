@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkillWorkBench Demo — SkillGenBench</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+  <!-- ── Config Banner ──────────────────────────────────────────── -->
+  <header class="config-banner">
+    <div class="banner-left">
+      <div class="app-logo">
+        <span class="logo-icon">⚗</span>
+        <div>
+          <div class="app-title">SkillWorkBench Demo</div>
+          <div class="app-sub">SkillGenBench · Skill Generation Pipelines for LLM Agents</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="banner-center">
+      <div class="config-row">
+        <div class="config-field">
+          <label>Provider</label>
+          <select id="provider"></select>
+        </div>
+        <div class="config-field">
+          <label>Model</label>
+          <select id="modelName"></select>
+        </div>
+        <div class="config-field api-field">
+          <label>API Key <span class="key-note">(session only)</span></label>
+          <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
+        </div>
+        <div class="config-field proxy-field">
+          <label>CORS Proxy <button id="resetProxyBtn" class="btn-inline" title="Reset to default">↺</button></label>
+          <input id="proxyUrl" type="text" placeholder="https://your-proxy.workers.dev/" />
+        </div>
+        <div class="config-field test-field">
+          <label>&nbsp;</label>
+          <button id="testBtn" class="btn btn-test">🧪 Test</button>
+        </div>
+      </div>
+      <div id="testResult" class="test-result hidden"></div>
+    </div>
+
+    <div class="banner-right">
+      <div id="benchBadge" class="memory-badge">SkillGenBench · 187 tasks</div>
+    </div>
+  </header>
+
+  <!-- ── Dashboard ─────────────────────────────────────────────── -->
+  <main class="dashboard">
+
+    <!-- Left: Source + Method + Setting selection -->
+    <aside class="col col-left">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-icon">📚</span>
+          <span>Source &amp; Method</span>
+        </div>
+        <div class="panel-body">
+
+          <label class="field-label">Source Type</label>
+          <div class="source-type-toggle">
+            <button id="typeRepo" class="type-btn active" data-type="repository">📁 Repository-Grounded</button>
+            <button id="typeDoc"  class="type-btn"        data-type="document">📄 Document-Grounded</button>
+          </div>
+
+          <label class="field-label" style="margin-top:12px">Source</label>
+          <select id="sourceSelect" class="scenario-select"></select>
+          <p id="sourceDesc" class="domain-desc"></p>
+
+          <label class="field-label" style="margin-top:10px">Generation Setting</label>
+          <div class="setting-toggle">
+            <button id="settingConditioned" class="setting-btn active" data-setting="task-conditioned">🎯 Task-Conditioned</button>
+            <button id="settingAgnostic"    class="setting-btn"       data-setting="task-agnostic">📦 Task-Agnostic</button>
+          </div>
+          <p id="settingDesc" class="scenario-desc" style="margin-top:6px"></p>
+
+          <label class="field-label" style="margin-top:10px">Generation Method</label>
+          <select id="methodSelect" class="scenario-select"></select>
+          <p id="methodDesc" class="scenario-desc" style="margin-top:4px"></p>
+
+          <div id="taskCard" class="scenario-card">
+            <p id="taskTitle" class="task-title"></p>
+            <p id="taskDesc" class="scenario-desc"></p>
+          </div>
+
+          <button id="executeBtn" class="btn btn-execute">▶ Generate Skill</button>
+          <div class="mock-tip">💡 No API key? Select <strong>🧪 Mock AI</strong> — runs full pipeline simulation without any network calls.</div>
+        </div>
+      </div>
+
+      <div class="panel panel-layers">
+        <div class="panel-header"><span class="panel-icon">🏗</span><span>SkillGenBench Architecture</span></div>
+        <div class="panel-body">
+          <div class="layer-badge layer-info"><strong>Stage 1–2 · Knowledge Graph</strong><p>Source → entities · relations · scenarios</p></div>
+          <div class="layer-badge layer-exec"><strong>Stage 3 · Skill Generation</strong><p>Generator produces standardized SKILL.md artifact</p></div>
+          <div class="layer-badge layer-feedback"><strong>Stage 4–5 · Evaluation</strong><p>Static diagnostics · Execution harness · pass@3</p></div>
+          <div class="regime-badges">
+            <span class="regime-badge repo-badge">📁 Repo: implicit procedures</span>
+            <span class="regime-badge doc-badge">📄 Doc: explicit procedures</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: Live generation trace -->
+    <section class="col col-center">
+      <div class="panel panel-trace">
+        <div class="panel-header">
+          <span class="panel-icon">📡</span><span>Generation Pipeline Trace</span>
+          <span class="trace-live-dot"></span>
+        </div>
+        <div id="traceContainer" class="trace-container">
+          <div class="trace-empty">
+            <div class="trace-empty-icon">⚗</div>
+            <p>Select a source, generation setting, and method — then click <strong>Generate Skill</strong>.</p>
+            <p class="trace-empty-sub">Pipeline stages stream here: Knowledge Graph → Skill Generation → Static Diagnostics → Execution.</p>
+            <p class="trace-empty-sub">Use <strong>Mock AI</strong> to demo without an API key.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Generated skill + evaluation -->
+    <section class="col col-right">
+      <div class="panel panel-clinician">
+        <div class="panel-header">
+          <span class="panel-icon">📝</span>
+          <span id="skillPanelLabel">Generated Skill</span>
+        </div>
+        <div id="skillPanel" class="clinician-body">
+          <div class="waiting-msg">
+            <div class="waiting-icon">⚗</div>
+            <p>Generated SKILL.md artifact will appear here.</p>
+            <p class="waiting-sub">Skill artifacts are evaluated via static diagnostics and execution-based pass@3.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
