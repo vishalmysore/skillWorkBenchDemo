@@ -95,6 +95,32 @@ Stage 5: Execution Evaluation
 
 ---
 
+## Honest assessment — what this demo does and does not justify
+
+### What it justifies well
+
+- The five-stage pipeline structure (Knowledge Graph → Skill Generation → Static Diagnostics → Execution)
+- The five method names, their descriptions, and relative performance differences
+- The six static diagnostic axes and what each measures
+- The SKILL.md artifact format and how different methods produce different quality outputs
+- The key paper finding: static quality ≠ execution success (SkillNet scores highest statically, SkillSeekers wins pass@3)
+- The failure mode taxonomy per source type
+
+### What it does NOT justify
+
+- **The actual difficulty gap between repo and doc** — both are hardcoded strings. The paper's point is that repository-grounded is harder because the LLM has to trace implicit execution structure through real code. This demo does not demonstrate that at all.
+- **The task-agnostic vs task-conditioned difference** — in the demo this just changes a text label. The paper's point is that building a reusable library without seeing the task is genuinely harder and can cause negative transfer.
+- **The generator-backbone interaction** — the paper shows the same method performs differently with GPT-5 vs Kimi K2.5 vs Qwen. The demo has no backbone comparison.
+- **Real skill generation** — in mock mode, the SKILL.md is pre-written by hand. The paper evaluates whether an LLM can actually distill a correct procedure from real source material.
+- **Real execution** — pass@3 is shown as a static number from the paper. The paper actually runs code in containerized environments against hidden test cases.
+- **The specification-execution gap** — the paper's central claim is that skills often look correct structurally but fail when executed. The demo asserts this but doesn't demonstrate it happening live.
+
+### Bottom line
+
+It works well as an **interactive explainer** for someone reading the paper — it makes the vocabulary tangible. But it doesn't function as a true demo of the benchmark itself, because none of the hard parts (real code reading, real skill generation, real execution) actually happen. A viewer watching Mock AI run could easily walk away thinking skill generation is easier than it is.
+
+---
+
 ## Architecture
 
 ```
