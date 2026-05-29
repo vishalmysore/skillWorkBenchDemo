@@ -1,189 +1,119 @@
-const DEFAULT_PROXY = 'https://quantumstudio.visrow.workers.dev/'
+// WebLLM — fully local inference, no cloud API or keys required.
 
-export const PROVIDERS = [
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    icon: '🤖',
-    keyPlaceholder: 'sk-…',
-    endpoint: 'https://api.openai.com/v1/chat/completions',
-    models: [
-      { id: 'gpt-4o',      name: 'GPT-4o (recommended)' },
-      { id: 'gpt-4o-mini', name: 'GPT-4o Mini (fast)' },
-    ],
-    format: 'openai',
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    icon: '🧬',
-    keyPlaceholder: 'sk-ant-…',
-    endpoint: 'https://api.anthropic.com/v1/messages',
-    models: [
-      { id: 'claude-opus-4-7',    name: 'Claude Opus 4.7 (most capable)' },
-      { id: 'claude-sonnet-4-6',  name: 'Claude Sonnet 4.6 (recommended)' },
-      { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (fast)' },
-    ],
-    format: 'anthropic',
-  },
-  {
-    id: 'gemini',
-    name: 'Google Gemini',
-    icon: '✨',
-    keyPlaceholder: 'AIza…',
-    endpoint: 'https://generativelanguage.googleapis.com',
-    models: [
-      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (recommended)' },
-      { id: 'gemini-1.5-pro',   name: 'Gemini 1.5 Pro' },
-    ],
-    format: 'openai',
-  },
-  {
-    id: 'nvidia',
-    name: 'NVIDIA NIM',
-    icon: '🟢',
-    keyPlaceholder: 'nvapi-…',
-    endpoint: 'https://integrate.api.nvidia.com/v1/chat/completions',
-    models: [
-      { id: 'nvidia/nemotron-nano-12b-v2-vl',      name: 'Nemotron Nano 12B V2' },
-      { id: 'meta/llama-3.1-70b-instruct',          name: 'Llama 3.1 70B Instruct' },
-    ],
-    format: 'openai',
-  },
-  {
-    id: 'mock',
-    name: 'Mock AI',
-    icon: '🧪',
-    keyPlaceholder: 'No key needed',
-    endpoint: 'mock',
-    models: [
-      { id: 'mock-skillgen', name: 'Mock SkillGen v1 (no API key required)' },
-    ],
-    format: 'mock',
-  },
+export const WEBLLM_MODELS = [
+  { id: 'mock',                                  name: '🧪 Mock (instant, no GPU needed)' },
+  { id: 'Llama-3.2-1B-Instruct-q4f32_1-MLC',   name: 'Llama 3.2 1B  (~0.9 GB) — fastest' },
+  { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',   name: 'Qwen 2.5 1.5B (~1.1 GB) — fast' },
+  { id: 'gemma-2-2b-it-q4f16_1-MLC',           name: 'Gemma 2 2B   (~1.5 GB) — balanced' },
+  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC',   name: 'Llama 3.2 3B  (~2.0 GB) — good' },
+  { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',   name: 'Phi-3.5 Mini  (~2.2 GB) — best quality' },
 ]
 
-let _config = {
-  provider: 'openai',
-  apiKey: '',
-  model: 'gpt-4o',
-  proxyUrl: _loadProxyUrl(),
-}
+let _worker      = null
+let _status      = 'idle'   // idle | loading | ready | error
+let _modelId     = null
+let _genCounter  = 0
 
-function _loadProxyUrl() {
-  try { return localStorage.getItem('sgb_proxy_url') || DEFAULT_PROXY } catch { return DEFAULT_PROXY }
-}
+let _loadResolve = null
+let _loadReject  = null
+let _genResolve  = null
+let _genReject   = null
+let _onProgress  = null
 
-export function setLLMConfig(cfg) {
-  _config = { ..._config, ...cfg }
-  if (cfg.proxyUrl !== undefined) {
-    try { localStorage.setItem('sgb_proxy_url', cfg.proxyUrl || DEFAULT_PROXY) } catch { /**/ }
+function _ensureWorker() {
+  if (_worker) return
+  _worker = new Worker(new URL('../worker.js', import.meta.url), { type: 'module' })
+  _worker.onmessage = _handleWorkerMessage
+  _worker.onerror = (e) => {
+    _status = 'error'
+    const msg = e.message ?? 'Worker crashed'
+    if (_loadReject) { _loadReject(new Error(msg)); _loadResolve = _loadReject = null }
+    if (_genReject)  { _genReject(new Error(msg));  _genResolve  = _genReject  = null }
   }
 }
 
-export function getLLMConfig() {
-  return { ..._config, proxyUrl: _config.proxyUrl || DEFAULT_PROXY }
+function _handleWorkerMessage(e) {
+  const msg = e.data
+  switch (msg.status) {
+    case 'device_detected':
+      _onProgress?.({ type: 'device', device: msg.device })
+      break
+    case 'phase':
+      _onProgress?.({ type: 'phase', phase: msg.phase, note: msg.note })
+      break
+    case 'downloading':
+      _onProgress?.({ type: 'downloading', file: msg.file, progress: msg.progress })
+      break
+    case 'ready':
+      _status  = 'ready'
+      _modelId = msg.modelId
+      _onProgress?.({ type: 'ready', modelId: msg.modelId })
+      if (_loadResolve) { _loadResolve(msg.modelId); _loadResolve = _loadReject = null }
+      break
+    case 'success':
+      if (_genResolve) {
+        _genResolve({ text: msg.generatedText, latencyMs: Math.round(msg.elapsedMs) })
+        _genResolve = _genReject = null
+      }
+      break
+    case 'error': {
+      _status = 'error'
+      _onProgress?.({ type: 'error', error: msg.error })
+      const err = new Error(msg.error)
+      if (_loadReject) { _loadReject(err); _loadResolve = _loadReject = null }
+      if (_genReject)  { _genReject(err);  _genResolve  = _genReject  = null }
+      break
+    }
+    case 'cancelled':
+    case 'disposed':
+      _status  = 'idle'
+      _modelId = null
+      break
+  }
 }
 
-export function getDefaultProxy() { return DEFAULT_PROXY }
-
-export function getProviderDef(providerId) {
-  return PROVIDERS.find(p => p.id === (providerId || _config.provider))
+export function getModelStatus() {
+  return { status: _status, modelId: _modelId }
 }
 
 export function isMockMode() {
-  return getLLMConfig().provider === 'mock'
+  return _modelId === 'mock'
+}
+
+export function loadModel(modelId, onProgress) {
+  if (modelId === 'mock') {
+    _status  = 'ready'
+    _modelId = 'mock'
+    onProgress?.({ type: 'ready', modelId: 'mock' })
+    return Promise.resolve('mock')
+  }
+  _ensureWorker()
+  _status     = 'loading'
+  _onProgress = onProgress ?? null
+  _genCounter++
+  return new Promise((resolve, reject) => {
+    _loadResolve = resolve
+    _loadReject  = reject
+    _worker.postMessage({ action: 'load', modelId, gen: _genCounter })
+  })
 }
 
 export async function callLLMForText(userMessage, systemPrompt) {
-  const { provider, apiKey, model, proxyUrl } = getLLMConfig()
-  const providerDef = getProviderDef(provider)
-  if (!providerDef) throw new Error(`Unknown provider: ${provider}`)
-  if (provider !== 'mock' && !apiKey) throw new Error('API key not configured.')
-
-  const proxy = proxyUrl || DEFAULT_PROXY
-
-  if (providerDef.format === 'anthropic') {
-    const res = await fetch(proxy, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-target-url': providerDef.endpoint,
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({ model, system: systemPrompt, messages: [{ role: 'user', content: userMessage }], max_tokens: 4096, temperature: 0.3 }),
+  if (_status !== 'ready') throw new Error('No model loaded. Load a model first.')
+  if (isMockMode()) throw new Error('Mock mode — pipeline should use mock path.')
+  _genCounter++
+  return new Promise((resolve, reject) => {
+    _genResolve = ({ text }) => resolve(text)
+    _genReject  = reject
+    _worker.postMessage({
+      action: 'generate',
+      messages: [{ role: 'user', content: userMessage }],
+      systemPrompt,
+      gen: _genCounter,
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data?.error?.message || `Anthropic error ${res.status}`)
-    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n')
-  }
-
-  const targetUrl = providerDef.id === 'gemini'
-    ? `${providerDef.endpoint}/v1beta/models/${model}:generateContent?key=${apiKey}`
-    : providerDef.endpoint
-
-  const headers = { 'Content-Type': 'application/json', 'x-target-url': targetUrl }
-  if (providerDef.id !== 'gemini') headers['Authorization'] = `Bearer ${apiKey}`
-
-  let body
-  if (providerDef.id === 'gemini') {
-    body = {
-      contents: [{ parts: [{ text: `${systemPrompt}\n\n${userMessage}` }] }],
-      generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
-    }
-  } else {
-    body = { model, temperature: 0.3, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }] }
-  }
-
-  const res = await fetch(proxy, { method: 'POST', headers, body: JSON.stringify(body) })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data?.error?.message || `${providerDef.name} error ${res.status}`)
-
-  if (providerDef.id === 'gemini') return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  return data.choices?.[0]?.message?.content || ''
+  })
 }
 
-export async function testConnection() {
-  const { provider, apiKey, model, proxyUrl } = getLLMConfig()
-  const providerDef = getProviderDef(provider)
-  if (!providerDef) throw new Error(`Unknown provider: ${provider}`)
-
-  if (provider === 'mock') {
-    await new Promise(r => setTimeout(r, 600))
-    return { text: 'OK (mock)', latencyMs: 600 }
-  }
-
-  if (!apiKey) throw new Error('No API key configured.')
-  const proxy = proxyUrl || DEFAULT_PROXY
-  const start = Date.now()
-
-  if (providerDef.format === 'anthropic') {
-    const res = await fetch(proxy, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-target-url': providerDef.endpoint, 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 10, messages: [{ role: 'user', content: 'Say OK' }] }),
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data?.error?.message || `Anthropic error ${res.status}`)
-    return { text: data.content?.[0]?.text || 'OK', latencyMs: Date.now() - start }
-  }
-
-  let targetUrl = providerDef.endpoint
-  if (provider === 'gemini') targetUrl = `${providerDef.endpoint}/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const headers = { 'Content-Type': 'application/json', 'x-target-url': targetUrl }
-  if (provider !== 'gemini') headers['Authorization'] = `Bearer ${apiKey}`
-
-  let body = provider === 'gemini'
-    ? { contents: [{ parts: [{ text: 'Say OK' }] }], generationConfig: { maxOutputTokens: 10 } }
-    : { model, max_tokens: 10, messages: [{ role: 'user', content: 'Say OK' }] }
-
-  const res = await fetch(proxy, { method: 'POST', headers, body: JSON.stringify(body) })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data?.error?.message || `${providerDef.name} error ${res.status}`)
-
-  const text = provider === 'gemini'
-    ? data.candidates?.[0]?.content?.parts?.[0]?.text || 'OK'
-    : data.choices?.[0]?.message?.content || 'OK'
-  return { text: text.trim(), latencyMs: Date.now() - start }
+export function cancelLoad() {
+  _worker?.postMessage({ action: 'cancel' })
 }

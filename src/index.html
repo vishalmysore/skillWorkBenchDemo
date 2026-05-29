@@ -22,28 +22,16 @@
 
     <div class="banner-center">
       <div class="config-row">
-        <div class="config-field">
-          <label>Provider</label>
-          <select id="provider"></select>
-        </div>
-        <div class="config-field">
-          <label>Model</label>
-          <select id="modelName"></select>
-        </div>
-        <div class="config-field api-field">
-          <label>API Key <span class="key-note">(session only)</span></label>
-          <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
-        </div>
-        <div class="config-field proxy-field">
-          <label>CORS Proxy <button id="resetProxyBtn" class="btn-inline" title="Reset to default">↺</button></label>
-          <input id="proxyUrl" type="text" placeholder="https://your-proxy.workers.dev/" />
+        <div class="config-field" style="flex:2">
+          <label>Local Model <span class="key-note">(runs on-device via WebGPU — no API key)</span></label>
+          <select id="modelSelect"></select>
         </div>
         <div class="config-field test-field">
           <label>&nbsp;</label>
-          <button id="testBtn" class="btn btn-test">🧪 Test</button>
+          <button id="loadModelBtn" class="btn btn-test">Load Model</button>
         </div>
       </div>
-      <div id="testResult" class="test-result hidden"></div>
+      <div id="modelStatus" class="model-status model-status-idle">No model loaded — select a model and click Load</div>
     </div>
 
     <div class="banner-right">
@@ -117,7 +105,7 @@
           </div>
 
           <button id="executeBtn" class="btn btn-execute">▶ Generate Skill</button>
-          <div class="mock-tip">💡 No API key? Select <strong>🧪 Mock AI</strong> — runs full pipeline simulation without any network calls.</div>
+          <div class="mock-tip">💡 No GPU? Select <strong>🧪 Mock (instant, no GPU needed)</strong> — runs full pipeline simulation without model loading.</div>
         </div>
       </div>
 
@@ -147,7 +135,7 @@
             <div class="trace-empty-icon">⚗</div>
             <p>Select a source, generation setting, and method — then click <strong>Generate Skill</strong>.</p>
             <p class="trace-empty-sub">Pipeline stages stream here: Knowledge Graph → Skill Generation → Static Diagnostics → Execution.</p>
-            <p class="trace-empty-sub">Use <strong>Mock AI</strong> to demo without an API key.</p>
+            <p class="trace-empty-sub">Use <strong>🧪 Mock</strong> mode to demo without loading a model.</p>
           </div>
         </div>
       </div>

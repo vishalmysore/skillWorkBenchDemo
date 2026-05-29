@@ -1,6 +1,6 @@
 import { runPipeline } from './generation/pipeline.js'
 import tracer from './feedback/tracer.js'
-import { PROVIDERS, setLLMConfig, getLLMConfig, getDefaultProxy, testConnection } from './utils/llm.js'
+import { WEBLLM_MODELS, loadModel, getModelStatus, cancelLoad } from './utils/llm.js'
 import SOURCES, { getSources, getRepoSources, getDocSources, METHODS, METHOD_LIST } from './sources/index.js'
 
 let currentResult  = null
@@ -8,38 +8,74 @@ let pipelineRunning = false
 let traceUnsub      = null
 let activeSourceType = 'repository'
 let activeSetting    = 'task-conditioned'
+let modelLoading     = false
 
-// ── LLM config ────────────────────────────────────────────────
+// ── Model loading ──────────────────────────────────────────────
 
-function syncConfigFromUI() {
-  setLLMConfig({
-    provider: document.getElementById('provider').value,
-    apiKey:   document.getElementById('apiKey').value.trim(),
-    model:    document.getElementById('modelName').value,
-    proxyUrl: document.getElementById('proxyUrl').value.trim() || getDefaultProxy(),
-  })
+function updateModelStatus(msg) {
+  const statusEl = document.getElementById('modelStatus')
+  const loadBtn  = document.getElementById('loadModelBtn')
+
+  if (!msg) {
+    statusEl.textContent = 'No model loaded'
+    statusEl.className   = 'model-status model-status-idle'
+    loadBtn.disabled     = false
+    loadBtn.textContent  = 'Load Model'
+    modelLoading         = false
+    return
+  }
+
+  switch (msg.type) {
+    case 'device':
+      statusEl.textContent = `WebGPU detected — starting download…`
+      statusEl.className   = 'model-status model-status-loading'
+      break
+    case 'phase':
+      statusEl.textContent = msg.phase === 'compile'
+        ? `Compiling shaders… (first load only, ~1–5 min)`
+        : `Downloading model…`
+      statusEl.className   = 'model-status model-status-loading'
+      break
+    case 'downloading':
+      statusEl.textContent = `Downloading… ${msg.progress}%`
+      statusEl.className   = 'model-status model-status-loading'
+      break
+    case 'ready':
+      statusEl.textContent = msg.modelId === 'mock'
+        ? `Mock mode ready`
+        : `Model ready: ${WEBLLM_MODELS.find(m => m.id === msg.modelId)?.name ?? msg.modelId}`
+      statusEl.className   = 'model-status model-status-ready'
+      loadBtn.disabled     = false
+      loadBtn.textContent  = 'Reload'
+      modelLoading         = false
+      break
+    case 'error':
+      statusEl.textContent = `Error: ${msg.error}`
+      statusEl.className   = 'model-status model-status-error'
+      loadBtn.disabled     = false
+      loadBtn.textContent  = 'Retry'
+      modelLoading         = false
+      break
+  }
 }
 
-function populateProviderModels(providerId) {
-  const prov = PROVIDERS.find(p => p.id === providerId)
-  const sel  = document.getElementById('modelName')
-  sel.innerHTML = ''
-  prov?.models.forEach(m => {
-    const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; sel.appendChild(o)
-  })
-  document.getElementById('apiKey').placeholder = prov?.keyPlaceholder || 'API key'
-  const noKey = providerId === 'mock'
-  document.getElementById('apiKey').disabled      = noKey
-  document.getElementById('apiKey').style.opacity = noKey ? '0.4' : '1'
-}
+async function handleLoadModel() {
+  if (modelLoading) { cancelLoad(); return }
+  const modelId = document.getElementById('modelSelect').value
+  const btn     = document.getElementById('loadModelBtn')
 
-function syncConfigToUI() {
-  const cfg = getLLMConfig()
-  document.getElementById('provider').value = cfg.provider
-  populateProviderModels(cfg.provider)
-  if (cfg.model) document.getElementById('modelName').value = cfg.model
-  document.getElementById('apiKey').value   = cfg.apiKey || ''
-  document.getElementById('proxyUrl').value = cfg.proxyUrl || getDefaultProxy()
+  modelLoading        = true
+  btn.disabled        = true
+  btn.textContent     = '⟳ Loading…'
+  const statusEl      = document.getElementById('modelStatus')
+  statusEl.textContent = 'Initializing…'
+  statusEl.className   = 'model-status model-status-loading'
+
+  try {
+    await loadModel(modelId, updateModelStatus)
+  } catch (err) {
+    updateModelStatus({ type: 'error', error: err.message })
+  }
 }
 
 // ── Source & method management ─────────────────────────────────
@@ -268,39 +304,13 @@ function handleFlag() {
   }, { once: true })
 }
 
-// ── Test connection ────────────────────────────────────────────
-
-async function handleTestConnection() {
-  syncConfigFromUI()
-  const cfg = getLLMConfig()
-  const btn = document.getElementById('testBtn')
-  if (cfg.provider !== 'mock' && !cfg.apiKey) { showTestResult('fail', '❌ Enter an API key first.'); return }
-  btn.disabled = true; btn.textContent = '⟳ Testing…'
-  document.getElementById('testResult').className = 'test-result hidden'
-  try {
-    const { text, latencyMs } = await testConnection()
-    showTestResult('ok', `✅ Connected! "${text.slice(0, 40)}" (${latencyMs}ms)`)
-  } catch (err) {
-    showTestResult('fail', `❌ ${err.message}`)
-  } finally {
-    btn.disabled = false; btn.textContent = '🧪 Test'
-  }
-}
-
-function showTestResult(status, msg) {
-  const el = document.getElementById('testResult')
-  el.textContent = msg
-  el.className   = `test-result test-result-${status}`
-}
-
 // ── Execute pipeline ───────────────────────────────────────────
 
 async function executePipeline() {
   if (pipelineRunning) return
-  syncConfigFromUI()
-  const cfg = getLLMConfig()
-  if (cfg.provider !== 'mock' && !cfg.apiKey) {
-    alert('Please enter your API key, or switch to 🧪 Mock AI to run without one.')
+  const { status } = getModelStatus()
+  if (status !== 'ready') {
+    alert('Please load a model first using the model selector above.')
     return
   }
 
@@ -338,25 +348,18 @@ async function executePipeline() {
 // ── Init ──────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Provider dropdown
-  const provSel = document.getElementById('provider')
-  PROVIDERS.forEach(p => {
-    const o = document.createElement('option'); o.value = p.id; o.textContent = `${p.icon} ${p.name}`; provSel.appendChild(o)
+  // Populate model selector
+  const modelSel = document.getElementById('modelSelect')
+  WEBLLM_MODELS.forEach(m => {
+    const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; modelSel.appendChild(o)
   })
 
-  syncConfigToUI()
   populateMethods()
   populateSources()
   updateSettingInfo()
 
-  // Provider
-  provSel.addEventListener('change', () => { populateProviderModels(provSel.value); syncConfigFromUI() })
-  document.getElementById('apiKey').addEventListener('input', syncConfigFromUI)
-  document.getElementById('modelName').addEventListener('change', syncConfigFromUI)
-  document.getElementById('proxyUrl').addEventListener('input', syncConfigFromUI)
-  document.getElementById('resetProxyBtn').addEventListener('click', () => {
-    document.getElementById('proxyUrl').value = getDefaultProxy(); syncConfigFromUI()
-  })
+  // Model loading
+  document.getElementById('loadModelBtn').addEventListener('click', handleLoadModel)
 
   // Source type toggle
   document.querySelectorAll('.type-btn').forEach(btn => {
@@ -393,5 +396,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Execute
   document.getElementById('executeBtn').addEventListener('click', executePipeline)
-  document.getElementById('testBtn').addEventListener('click', handleTestConnection)
 })
